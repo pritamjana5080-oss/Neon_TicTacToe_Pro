@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Tic Tac Toe (P2P)</title>
+    
+    <!-- QRCode Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- PeerJS Library -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+
+        :root {
+            --bg-color: #050505;
+            --neon-green: #39ff14;
+            --neon-pink: #ff00ff;
+            --neon-cyan: #00ffff;
+            --neon-yellow: #ffff00;
+            --grid-color: rgba(57, 255, 20, 0.3);
+            --border-width: 2px;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--neon-green);
+            font-family: 'Orbitron', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 10px;
+            overflow-x: hidden;
+            text-transform: uppercase;
+            touch-action: manipulation;
+        }
+
+        /* Watermark */
+        .watermark {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            font-size: 0.8rem;
+            color: var(--neon-green);
+            text-shadow: 0 0 8px var(--neon-green);
+            opacity: 0.8;
+            z-index: 9999;
+            pointer-events: none;
+            letter-spacing: 1px;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 10px;
+            border: 1px solid rgba(57, 255, 20, 0.3);
+            border-radius: 4px;
+        }
+
+        /* CRT Effect */
+        body::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 50;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+
+        h1 {
+            font-size: clamp(1.5rem, 5vw, 2.5rem);
+            text-shadow: 0 0 10px var(--neon-green), 0 0 20px var(--neon-green);
+            margin: 0 0 15px 0;
+            letter-spacing: 2px;
+            text-align: center;
+        }
+
+        #status {
+            margin-bottom: 15px;
+            font-size: 1rem;
+            color: var(--neon-cyan);
+            text-shadow: 0 0 5px var(--neon-cyan);
+            height: 1.5em;
+            text-align: center;
+            width: 100%;
+        }
+
+        .game-container {
+            position: relative;
+            z-index: 10;
+            padding: 20px;
+            border: var(--border-width) solid var(--grid-color);
+            box-shadow: 0 0 20px var(--grid-color);
+            background: rgba(0, 0, 0, 0.9);
+            width: 100%;
+            max-width: 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 540px;
+        }
+
+        /* --- Menus --- */
+        .overlay-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 5, 5, 0.98);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            text-align: center;
+            transition: opacity 0.3s;
+        }
+
+        .hidden { 
+            display: none !important; 
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .menu-btn {
+            background: transparent;
+            color: var(--neon-cyan);
+            border: 1px solid var(--neon-cyan);
+            padding: 15px 0;
+            width: 100%;
+            margin-bottom: 10px;
+            font-family: inherit;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.2s;
+            text-shadow: 0 0 5px var(--neon-cyan);
+            box-shadow: 0 0 5px var(--neon-cyan);
+        }
+
+        .menu-btn:hover {
+            background: var(--neon-cyan);
+            color: black;
+            box-shadow: 0 0 20px var(--neon-cyan);
+        }
+
+        .secondary-btn {
+            border-color: #666;
+            color: #aaa;
+            box-shadow: none;
+            text-shadow: none;
+            font-size: 0.9rem;
+            padding: 10px 0;
+        }
+        .secondary-btn:hover {
+            border-color: #fff;
+            color: #fff;
+            background: transparent;
+        }
+
+        /* --- Side Selector --- */
+        .side-selector {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+        
+        .side-btn {
+            flex: 1;
+            padding: 10px;
+            background: transparent;
+            border: 1px solid #444;
+            color: #666;
+            font-family: inherit;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: all 0.2s;
+        }
+
+        .side-btn.active {
+            border-color: var(--neon-green);
+            color: var(--neon-green);
+            box-shadow: inset 0 0 10px rgba(57, 255, 20, 0.2);
+            text-shadow: 0 0 5px var(--neon-green);
+        }
+        
+        .side-btn.active[data-side="O"] {
+            border-color: var(--neon-pink);
+            color: var(--neon-pink);
+            box-shadow: inset 0 0 10px rgba(255, 0, 255, 0.2);
+            text-shadow: 0 0 5px var(--neon-pink);
+        }
+
+        .menu-label { font-size: 0.8rem; color: #888; margin-bottom: 5px; display:block;}
+
+        /* --- Inputs & Codes --- */
+        .input-group { width: 100%; margin-bottom: 15px; }
+
+        input[type="text"] {
+            width: 100%;
+            background: #000;
+            border: 1px solid var(--neon-green);
+            color: var(--neon-green);
+            padding: 10px;
+            font-family: inherit;
+            text-align: center;
+            font-size: 1.2rem;
+            outline: none;
+            margin-bottom: 10px;
+        }
+
+        .code-display {
+            font-size: 1rem;
+            color: var(--neon-yellow);
+            border: 2px dashed var(--neon-yellow);
+            padding: 10px;
+            width: 100%;
+            margin: 10px 0;
+            word-break: break-all;
+            cursor: pointer;
+            user-select: all;
+            min-height: 3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .code-label { font-size: 0.8rem; color: #888; }
+
+        #qrcode {
+            background: white;
+            padding: 10px;
+            margin: 15px 0;
+            border: 2px solid var(--neon-green);
+            min-height: 148px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- Board --- */
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 20px;
+            width: 100%;
+            aspect-ratio: 1/1;
+        }
+
+        .cell {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--neon-green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(2rem, 10vw, 3.5rem);
+            cursor: pointer;
+            box-shadow: inset 0 0 5px var(--neon-green);
+        }
+        
+        .cell:hover { background-color: rgba(57, 255, 20, 0.1); }
+
+        .cell.x { color: var(--neon-green); text-shadow: 0 0 10px var(--neon-green); }
+        .cell.o { color: var(--neon-pink); border-color: var(--neon-pink); box-shadow: inset 0 0 5px var(--neon-pink); text-shadow: 0 0 10px var(--neon-pink); }
+        
+        .cell.win { background-color: var(--neon-green); color: black; text-shadow: none; }
+        .cell.o.win { background-color: var(--neon-pink); color: black; text-shadow: none; }
+
+        /* Game Controls */
+        .game-controls {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+        }
+        
+        .game-controls .menu-btn {
+            flex: 1;
+            font-size: 0.9rem;
+            padding: 12px 0;
+        }
+
+        /* Toast */
+        #toast {
+            visibility: hidden;
+            min-width: 250px;
+            background-color: var(--neon-green);
+            color: #000;
+            text-align: center;
+            border-radius: 2px;
+            padding: 16px;
+            position: fixed;
+            z-index: 100;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            font-size: 1rem;
+            font-weight: bold;
+            box-shadow: 0 0 20px var(--neon-green);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #toast.show { visibility: visible; opacity: 1; }
+
+    </style>
+</head>
+<body>
+
+    <!-- Watermark -->
+    <div class="watermark">@DevPritamWorks</div>
+
+    <div class="game-container">
+
+        <!-- 1. MAIN MENU -->
+        <div id="main-menu" class="overlay-screen">
+            <h1>NEON TACTICS</h1>
+            
+            <!-- Side Selector -->
+            <span class="menu-label">PLAY AS</span>
+            <div class="side-selector">
+                <button class="side-btn active" data-side="X" onclick="setSide('X')">X</button>
+                <button class="side-btn" data-side="O" onclick="setSide('O')">O</button>
+            </div>
+
+            <button class="menu-btn" onclick="startLocal('pve')">VS SYSTEM (AI)</button>
+            <button class="menu-btn" onclick="startLocal('pvp')">LOCAL 2 PLAYER</button>
+            <button class="menu-btn" style="border-color: var(--neon-yellow); color: var(--neon-yellow); box-shadow: 0 0 5px var(--neon-yellow);" onclick="showOnlineMenu()">PLAY ONLINE (P2P)</button>
+        </div>
+
+        <!-- 2. ONLINE MENU -->
+        <div id="online-menu" class="overlay-screen hidden">
+            <h1>CONNECTION MODE</h1>
+            <button class="menu-btn" onclick="initHost()">HOST GAME</button>
+            <button class="menu-btn" onclick="showJoinScreen()">JOIN GAME</button>
+            <button class="menu-btn secondary-btn" onclick="goBackToMain()">BACK</button>
+        </div>
+
+        <!-- 3. JOIN SCREEN -->
+        <div id="join-screen" class="overlay-screen hidden">
+            <h1>ENTER ID</h1>
+            <div class="input-group">
+                <input type="text" id="join-input" placeholder="PASTE FRIEND'S ID">
+            </div>
+            <button class="menu-btn" onclick="initJoin()">CONNECT</button>
+            <button class="menu-btn secondary-btn" onclick="showOnlineMenu()">BACK</button>
+            <div id="join-error" style="color: red; font-size: 0.8rem; margin-top: 10px;"></div>
+        </div>
+
+        <!-- 4. LOBBY (HOST) -->
+        <div id="lobby-screen" class="overlay-screen hidden">
+            <h1 style="font-size: 1.2rem; color: #fff;">WAITING FOR PLAYER...</h1>
+            <div class="code-label">YOUR ID (CLICK TO COPY)</div>
+            <div class="code-display" id="my-id-display" onclick="copyId()">Generating...</div>
+            <div id="qrcode"></div>
+            <button class="menu-btn" onclick="copyLink()">COPY INVITE LINK</button>
+            <button class="menu-btn secondary-btn" onclick="goBackToMain()">CANCEL</button>
+        </div>
+
+        <!-- 5. GAME OVER SCREEN -->
+        <div id="game-over-screen" class="overlay-screen hidden">
+            <h1 id="game-over-title">GAME OVER</h1>
+            <h2 id="game-over-result" style="margin-bottom: 20px; color: #fff;"></h2>
+            <button class="menu-btn" onclick="triggerRestart()">PLAY AGAIN</button>
+            <button class="menu-btn secondary-btn" onclick="goBackToMain()">EXIT TO MENU</button>
+        </div>
+
+        <!-- GAME UI -->
+        <h1>TIC_TAC_TOE</h1>
+        <div id="status">READY</div>
+        
+        <div class="board" id="board">
+            <div class="cell" onclick="cellClicked(0)"></div>
+            <div class="cell" onclick="cellClicked(1)"></div>
+            <div class="cell" onclick="cellClicked(2)"></div>
+            <div class="cell" onclick="cellClicked(3)"></div>
+            <div class="cell" onclick="cellClicked(4)"></div>
+            <div class="cell" onclick="cellClicked(5)"></div>
+            <div class="cell" onclick="cellClicked(6)"></div>
+            <div class="cell" onclick="cellClicked(7)"></div>
+            <div class="cell" onclick="cellClicked(8)"></div>
+        </div>
+        
+        <div class="game-controls">
+            <button class="menu-btn" onclick="triggerRestart()">RESTART</button>
+            <button class="menu-btn secondary-btn" onclick="goBackToMain()">EXIT</button>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast">COPIED</div>
+
+    <script>
+        // --- Game State ---
+        let boardState = Array(9).fill('');
+        let isGameActive = false;
+        let turn = 'X';
+        let gameMode = 'local'; // 'pve', 'pvp', 'online'
+        let myRole = 'local'; // 'X', 'O', 'local'
+        let preferredSide = 'X';
+        
+        // --- P2P Variables ---
+        let peer = null;
+        let conn = null;
+        
+        // --- DOM ---
+        const screens = {
+            main: document.getElementById('main-menu'),
+            online: document.getElementById('online-menu'),
+            join: document.getElementById('join-screen'),
+            lobby: document.getElementById('lobby-screen'),
+            gameOver: document.getElementById('game-over-screen')
+        };
+        const statusEl = document.getElementById('status');
+        const cells = document.querySelectorAll('.cell');
+        const myIdDisplay = document.getElementById('my-id-display');
+        const qrContainer = document.getElementById('qrcode');
+        const joinInput = document.getElementById('join-input');
+        const joinError = document.getElementById('join-error');
+        const toastEl = document.getElementById('toast');
+        const gameOverResult = document.getElementById('game-over-result');
+
+        // --- Navigation ---
+        function switchScreen(name) {
+            Object.values(screens).forEach(el => el.classList.add('hidden'));
+            if(name && screens[name]) screens[name].classList.remove('hidden');
+            joinError.innerText = "";
+        }
+
+        window.showOnlineMenu = () => switchScreen('online');
+        window.showJoinScreen = () => switchScreen('join');
+        window.goBackToMain = () => {
+            if (peer) { peer.destroy(); peer = null; }
+            if (conn) { conn.close(); conn = null; }
+            switchScreen('main');
+            resetBoard();
+            statusEl.innerText = "READY";
+        };
+
+        window.setSide = (side) => {
+            preferredSide = side;
+            document.querySelectorAll('.side-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.side-btn[data-side="${side}"]`).classList.add('active');
+        };
+
+        // --- Setup on Load ---
+        window.onload = () => {
+            const params = new URLSearchParams(window.location.search);
+            const hostId = params.get('host');
+            if(hostId) {
+                joinInput.value = hostId;
+                switchScreen('join');
+            }
+        }
+
+        // --- Local Game Logic ---
+        window.startLocal = (mode) => {
+            gameMode = mode;
+            myRole = preferredSide; // Use preference
+            startMatch();
+            
+            // If PvE and player chose O, AI (X) moves first immediately
+            if(gameMode === 'pve' && myRole === 'O') {
+                setTimeout(aiMove, 600);
+            }
+        }
+
+        function startMatch() {
+            switchScreen(null); // Hide all overlays
+            resetBoard();
+            isGameActive = true;
+            turn = 'X'; // X always starts
+            updateStatus();
+        }
+
+        function updateStatus() {
+            if(!isGameActive) return;
+            
+            if (gameMode === 'online') {
+                if (turn === myRole) {
+                    statusEl.innerText = "YOUR TURN";
+                    statusEl.style.color = myRole === 'X' ? 'var(--neon-green)' : 'var(--neon-pink)';
+                } else {
+                    statusEl.innerText = "OPPONENT'S TURN";
+                    statusEl.style.color = "#888";
+                }
+            } else if (gameMode === 'pve') {
+                if(turn === myRole) {
+                    statusEl.innerText = "YOUR TURN";
+                    statusEl.style.color = myRole === 'X' ? 'var(--neon-green)' : 'var(--neon-pink)';
+                } else {
+                    statusEl.innerText = "SYSTEM THINKING";
+                    statusEl.style.color = myRole === 'X' ? 'var(--neon-pink)' : 'var(--neon-green)';
+                }
+            } else {
+                statusEl.innerText = `PLAYER ${turn}'S TURN`;
+                statusEl.style.color = turn === 'X' ? 'var(--neon-green)' : 'var(--neon-pink)';
+            }
+        }
+
+        // --- Core Game Logic ---
+        window.cellClicked = (index) => {
+            if (!isGameActive || boardState[index] !== '') return;
+
+            // Online Turn Check
+            if (gameMode === 'online' && turn !== myRole) return;
+            // PvE AI Turn Check
+            if (gameMode === 'pve' && turn !== myRole) return;
+
+            makeMove(index, turn);
+
+            // Send Move if Online
+            if (gameMode === 'online' && conn) {
+                conn.send({ type: 'move', index: index, player: myRole });
+            }
+
+            // Trigger AI if PvE
+            if (gameMode === 'pve' && isGameActive && turn !== myRole) {
+                setTimeout(aiMove, 600);
+            }
+        };
+
+        function makeMove(index, player) {
+            boardState[index] = player;
+            cells[index].innerText = player;
+            cells[index].classList.add(player.toLowerCase());
+
+            // Check Win
+            const winner = checkWinner(boardState);
+            if (winner) {
+                endGame(winner);
+            } else {
+                turn = turn === 'X' ? 'O' : 'X';
+                updateStatus();
+            }
+        }
+
+        function endGame(winner) {
+            isGameActive = false;
+            let msg = "";
+            let color = "#fff";
+
+            if (winner === 'draw') {
+                msg = "STALEMATE";
+                statusEl.innerText = msg;
+            } else {
+                if (gameMode === 'pve') {
+                    msg = winner === myRole ? "VICTORY" : "DEFEAT";
+                } else if (gameMode === 'online') {
+                    msg = winner === myRole ? "VICTORY" : "DEFEAT";
+                } else {
+                    msg = `PLAYER ${winner} WINS`;
+                }
+                statusEl.innerText = msg;
+                statusEl.style.color = winner === 'X' ? 'var(--neon-green)' : 'var(--neon-pink)';
+                highlightWin(winner);
+                color = winner === 'X' ? 'var(--neon-green)' : 'var(--neon-pink)';
+            }
+
+            setTimeout(() => {
+                gameOverResult.innerText = msg;
+                gameOverResult.style.color = color;
+                screens.gameOver.classList.remove('hidden');
+            }, 800);
+        }
+
+        window.triggerRestart = () => {
+            if (gameMode === 'online' && conn) {
+                conn.send({ type: 'restart' });
+            }
+            startMatch();
+            
+            // If PvE and Player is O, AI (X) starts again
+            if(gameMode === 'pve' && myRole === 'O') {
+                setTimeout(aiMove, 600);
+            }
+            
+            showToast("MATCH RESTARTED");
+        };
+
+        function highlightWin(winner) {
+            const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+            lines.forEach(line => {
+                if(boardState[line[0]] === winner && boardState[line[1]] === winner && boardState[line[2]] === winner) {
+                    line.forEach(i => cells[i].classList.add('win'));
+                }
+            });
+        }
+
+        function checkWinner(board) {
+            const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+            for(let line of lines) {
+                const [a,b,c] = line;
+                if(board[a] && board[a] === board[b] && board[a] === board[c]) return board[a];
+            }
+            if(!board.includes('')) return 'draw';
+            return null;
+        }
+
+        function resetBoard() {
+            boardState = Array(9).fill('');
+            cells.forEach(c => {
+                c.innerText = '';
+                c.className = 'cell';
+            });
+            isGameActive = false;
+        }
+
+        function aiMove() {
+            if(!isGameActive) return;
+            let aiSym = myRole === 'X' ? 'O' : 'X';
+            let available = boardState.map((v, i) => v === '' ? i : null).filter(v => v !== null);
+            if(available.length > 0) {
+                let move = findBestMove(aiSym); // Win
+                if(move === -1) move = findBestMove(myRole); // Block
+                if(move === -1) move = available[Math.floor(Math.random() * available.length)]; // Random
+                makeMove(move, aiSym);
+            }
+        }
+
+        function findBestMove(player) {
+             const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+             for(let line of lines) {
+                 const [a,b,c] = line;
+                 if(boardState[a] === player && boardState[b] === player && boardState[c] === '') return c;
+                 if(boardState[a] === player && boardState[c] === player && boardState[b] === '') return b;
+                 if(boardState[b] === player && boardState[c] === player && boardState[a] === '') return a;
+             }
+             return -1;
+        }
+
+        // --- P2P Logic (PeerJS) ---
+
+        window.initHost = () => {
+            resetBoard();
+            gameMode = 'online';
+            myRole = preferredSide; // Host takes preference
+            myIdDisplay.innerText = "CONNECTING...";
+            switchScreen('lobby');
+
+            peer = new Peer(null, { debug: 2 });
+
+            peer.on('open', (id) => {
+                myIdDisplay.innerText = id;
+                generateQR(id);
+            });
+
+            peer.on('connection', (connection) => {
+                conn = connection;
+                setupConnection();
+                // Host sends init packet to tell joiner their role
+                // Joiner Role is opposite of Host
+                const joinerRole = myRole === 'X' ? 'O' : 'X';
+                
+                // We wait briefly for connection to stabilize then send
+                setTimeout(() => {
+                     conn.send({ type: 'init', role: joinerRole });
+                     startMatch();
+                     showToast("PLAYER CONNECTED");
+                }, 500);
+            });
+
+            peer.on('error', (err) => {
+                console.error(err);
+                alert("Connection Error: " + err.type);
+            });
+        };
+
+        window.initJoin = () => {
+            const hostId = joinInput.value.trim();
+            if(!hostId) return;
+
+            joinError.innerText = "CONNECTING...";
+            gameMode = 'online';
+            // myRole will be assigned by Host
+
+            peer = new Peer(null, { debug: 2 });
+
+            peer.on('open', (id) => {
+                conn = peer.connect(hostId);
+                
+                conn.on('open', () => {
+                    setupConnection();
+                    // Don't start yet, wait for 'init' packet
+                });
+
+                conn.on('error', (err) => {
+                    joinError.innerText = "FAILED TO CONNECT";
+                });
+            });
+
+            peer.on('error', (err) => {
+                joinError.innerText = "ERROR: " + err.type;
+            });
+        };
+
+        function setupConnection() {
+            conn.on('data', (data) => {
+                if(data.type === 'init') {
+                    myRole = data.role; // Set role assigned by host
+                    startMatch();
+                    showToast("CONNECTED TO HOST");
+                }
+                if(data.type === 'move') {
+                    makeMove(data.index, data.player);
+                }
+                if(data.type === 'restart') {
+                    startMatch();
+                    showToast("OPPONENT RESTARTED");
+                }
+            });
+
+            conn.on('close', () => {
+                alert("Opponent Disconnected");
+                goBackToMain();
+            });
+        }
+
+        // --- Utils ---
+        window.copyId = () => copyToClip(myIdDisplay.innerText);
+        window.copyLink = () => {
+            const url = new URL(window.location.href);
+            url.searchParams.set('host', myIdDisplay.innerText);
+            copyToClip(url.toString());
+        }
+
+        function copyToClip(text) {
+             const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position="fixed"; textArea.style.opacity="0";
+            document.body.appendChild(textArea);
+            textArea.focus(); textArea.select();
+            try {
+                document.execCommand('copy');
+                showToast("COPIED!");
+            } catch (err) {}
+            document.body.removeChild(textArea);
+        }
+
+        window.generateQR = (id) => {
+            qrContainer.innerHTML = '';
+            const url = new URL(window.location.href);
+            url.searchParams.set('host', id);
+            new QRCode(qrContainer, {
+                text: url.toString(),
+                width: 128, height: 128,
+                colorDark : "#000000", colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.L
+            });
+        }
+
+        function showToast(msg) {
+            toastEl.innerText = msg;
+            toastEl.className = "show";
+            setTimeout(() => { toastEl.className = toastEl.className.replace("show", ""); }, 3000);
+        }
+
+    </script>
+</body>
+</html>
+
+
