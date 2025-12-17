@@ -638,7 +638,7 @@
         window.initHost = () => {
             resetBoard();
             gameMode = 'online';
-            myRole = preferredSide; // Host takes preference
+            myRole = preferredSide; 
             myIdDisplay.innerText = "CONNECTING...";
             switchScreen('lobby');
 
@@ -652,16 +652,7 @@
             peer.on('connection', (connection) => {
                 conn = connection;
                 setupConnection();
-                // Host sends init packet to tell joiner their role
-                // Joiner Role is opposite of Host
-                const joinerRole = myRole === 'X' ? 'O' : 'X';
-                
-                // We wait briefly for connection to stabilize then send
-                setTimeout(() => {
-                     conn.send({ type: 'init', role: joinerRole });
-                     startMatch();
-                     showToast("PLAYER CONNECTED");
-                }, 500);
+                // Handshake Step 2: Host waits for 'join_request' from Joiner
             });
 
             peer.on('error', (err) => {
@@ -676,8 +667,7 @@
 
             joinError.innerText = "CONNECTING...";
             gameMode = 'online';
-            // myRole will be assigned by Host
-
+            
             peer = new Peer(null, { debug: 2 });
 
             peer.on('open', (id) => {
@@ -685,7 +675,9 @@
                 
                 conn.on('open', () => {
                     setupConnection();
-                    // Don't start yet, wait for 'init' packet
+                    // Handshake Step 1: Joiner sends request
+                    conn.send({ type: 'join_request' });
+                    joinError.innerText = "WAITING FOR HOST...";
                 });
 
                 conn.on('error', (err) => {
@@ -700,15 +692,25 @@
 
         function setupConnection() {
             conn.on('data', (data) => {
-                if(data.type === 'init') {
-                    myRole = data.role; // Set role assigned by host
+                // Handshake Logic
+                if(data.type === 'join_request') {
+                    // Host receives request -> Sends Init
+                    const joinerRole = myRole === 'X' ? 'O' : 'X';
+                    conn.send({ type: 'init', role: joinerRole });
+                    startMatch();
+                    showToast("PLAYER JOINED");
+                }
+                else if(data.type === 'init') {
+                    // Joiner receives Init -> Starts Game
+                    myRole = data.role;
                     startMatch();
                     showToast("CONNECTED TO HOST");
                 }
-                if(data.type === 'move') {
+                // Game Logic
+                else if(data.type === 'move') {
                     makeMove(data.index, data.player);
                 }
-                if(data.type === 'restart') {
+                else if(data.type === 'restart') {
                     startMatch();
                     showToast("OPPONENT RESTARTED");
                 }
@@ -762,5 +764,6 @@
     </script>
 </body>
 </html>
+
 
 
